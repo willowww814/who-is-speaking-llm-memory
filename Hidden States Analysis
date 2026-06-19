@@ -321,3 +321,189 @@ plt.tight_layout()
 plt.savefig('hidden_states_llama_full.png', dpi=300, bbox_inches='tight')
 plt.show()
 print("Saved as hidden_states_llama_full.png")
+
+# Step 9: Layer-to-Layer Movement Analysis — Llama
+#
+# For each layer transition, calculate:
+# 1. How much do personal sentences move?
+# 2. How much do official sentences move?
+# 3. Does the movement of personal sentences
+#    bring them closer to or further from the official centroid?
+
+import numpy as np
+
+num_layers = p_hidden_llama.shape[1]  # 17
+
+movement_analysis = []
+
+for layer in range(1, num_layers):
+    # Vector change between consecutive layers
+    p_delta = p_hidden_llama[:, layer, :] - p_hidden_llama[:, layer-1, :]
+    o_delta = o_hidden_llama[:, layer, :] - o_hidden_llama[:, layer-1, :]
+
+    # Magnitude of movement
+    p_movement = np.linalg.norm(p_delta, axis=1).mean()
+    o_movement = np.linalg.norm(o_delta, axis=1).mean()
+
+    # Direction: is personal moving toward or away from the official centroid?
+    prev_dist = layer_distances_p_to_o_llama[layer-1]
+    curr_dist = layer_distances_p_to_o_llama[layer]
+    direction = curr_dist - prev_dist  # negative = closer, positive = further
+
+    movement_analysis.append({
+        'layer': layer,
+        'p_movement': p_movement,
+        'o_movement': o_movement,
+        'ratio': p_movement / o_movement,  # >1 means personal moves more
+        'direction': direction
+    })
+
+print("Layer | Personal Movement | Official Movement | "
+      "Ratio (P/O) | Direction")
+print("-" * 75)
+for m in movement_analysis:
+    dir_str = "← closer" if m['direction'] < 0 else "→ further"
+    print(f"L{m['layer']:2d}   | {m['p_movement']:.4f}            | "
+          f"{m['o_movement']:.4f}            | "
+          f"{m['ratio']:.3f}      | {dir_str} ({m['direction']:+.4f})")
+
+# Step 10: Visualizing Movement Magnitude and Direction — Llama (Personal)
+
+import matplotlib.pyplot as plt
+from matplotlib.patches import Patch
+import numpy as np
+
+layers = [m['layer'] for m in movement_analysis]
+p_movements = [m['p_movement'] for m in movement_analysis]
+o_movements = [m['o_movement'] for m in movement_analysis]
+directions = [m['direction'] for m in movement_analysis]
+
+fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 10))
+
+# Plot 1: Movement magnitude
+ax1.plot(layers, p_movements, 'o-', color='steelblue',
+         linewidth=2, markersize=7, label='Personal sentences')
+ax1.plot(layers, o_movements, 's-', color='tomato',
+         linewidth=2, markersize=7, label='Official sentences')
+ax1.fill_between(layers, p_movements, o_movements,
+                  alpha=0.15, color='gray')
+ax1.set_ylabel('Vector Movement Magnitude', fontsize=11)
+ax1.set_title('Vector Movement per Layer: Personal vs Official\n'
+              '(higher = more semantic transformation)',
+              fontsize=12, fontweight='bold')
+ax1.legend(fontsize=11)
+ax1.grid(True, alpha=0.3)
+ax1.set_yscale('log')  # log scale because L16 is very large
+
+# Plot 2: Direction (toward or away from official centroid)
+colors = ['#2ECC71' if d < 0 else '#E74C3C' for d in directions]
+ax2.bar(layers, directions, color=colors, alpha=0.8)
+ax2.axhline(y=0, color='black', linewidth=0.8)
+ax2.set_xlabel('Llama Layer', fontsize=11)
+ax2.set_ylabel('Distance Change to Official Centroid', fontsize=11)
+ax2.set_title('Direction of Movement: Toward (green) or Away from (red) '
+              'Official Centroid',
+              fontsize=12, fontweight='bold')
+ax2.grid(True, alpha=0.3, axis='y')
+
+legend_elements = [
+    Patch(facecolor='#2ECC71', label='Moving closer to official centroid'),
+    Patch(facecolor='#E74C3C', label='Moving further from official centroid'),
+]
+ax2.legend(handles=legend_elements, fontsize=10)
+
+plt.tight_layout()
+plt.savefig('movement_analysis.png', dpi=300, bbox_inches='tight')
+plt.show()
+print("Saved as movement_analysis.png")
+
+ Step 11: Layer-to-Layer Movement Analysis — Llama (Official, symmetric to Step 9)
+
+import numpy as np
+
+movement_analysis_official = []
+
+for layer in range(1, num_layers):
+    # Vector change between consecutive layers for official sentences
+    o_delta = o_hidden_llama[:, layer, :] - o_hidden_llama[:, layer-1, :]
+    p_delta = p_hidden_llama[:, layer, :] - p_hidden_llama[:, layer-1, :]
+
+    # Magnitude of movement
+    o_movement = np.linalg.norm(o_delta, axis=1).mean()
+    p_movement = np.linalg.norm(p_delta, axis=1).mean()
+
+    # Direction: is official moving toward or away from the personal centroid?
+    prev_dist = layer_distances_o_to_p_llama[layer-1]
+    curr_dist = layer_distances_o_to_p_llama[layer]
+    direction = curr_dist - prev_dist
+
+    movement_analysis_official.append({
+        'layer': layer,
+        'o_movement': o_movement,
+        'p_movement': p_movement,
+        'ratio': o_movement / p_movement,
+        'direction': direction
+    })
+
+print("Layer | Official Movement | Personal Movement | "
+      "Ratio (O/P) | Direction")
+print("-" * 75)
+for m in movement_analysis_official:
+    dir_str = "← closer" if m['direction'] < 0 else "→ further"
+    print(f"L{m['layer']:2d}   | {m['o_movement']:.4f}            | "
+          f"{m['p_movement']:.4f}            | "
+          f"{m['ratio']:.3f}      | {dir_str} ({m['direction']:+.4f})")
+
+# Step 12: Comparing Personal vs Official Movement — Llama
+
+import matplotlib.pyplot as plt
+
+layers = list(range(1, num_layers))
+
+p_movements = [m['p_movement'] for m in movement_analysis]
+o_movements = [m['o_movement'] for m in movement_analysis_official]
+
+ratios_p = [m['ratio'] for m in movement_analysis]
+ratios_o = [m['ratio'] for m in movement_analysis_official]
+
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(18, 7))
+
+# Left: Movement magnitude
+ax1.plot(layers, p_movements, 'o-', color='steelblue',
+         linewidth=2, markersize=7, label='Personal sentences')
+ax1.plot(layers, o_movements, 's-', color='tomato',
+         linewidth=2, markersize=7, label='Official sentences')
+ax1.fill_between(layers, p_movements, o_movements,
+                  alpha=0.15, color='gray')
+ax1.set_yscale('log')
+ax1.set_xlabel('Llama Layer', fontsize=11)
+ax1.set_ylabel('Vector Movement Magnitude (log scale)', fontsize=11)
+ax1.set_title('Movement Magnitude per Layer\n'
+              'Personal vs Official Sentences',
+              fontsize=12, fontweight='bold')
+ax1.legend(fontsize=11)
+ax1.grid(True, alpha=0.3)
+
+# Right: Ratio
+ax2.plot(layers, ratios_p, 'o-', color='steelblue',
+         linewidth=2, markersize=7, label='Personal/Official ratio')
+ax2.plot(layers, ratios_o, 's-', color='tomato',
+         linewidth=2, markersize=7, label='Official/Personal ratio')
+ax2.axhline(y=1.0, color='black', linewidth=1,
+            linestyle='--', alpha=0.5, label='Equal movement')
+ax2.set_xlabel('Llama Layer', fontsize=11)
+ax2.set_ylabel('Movement Ratio', fontsize=11)
+ax2.set_title('Movement Ratio per Layer\n'
+              '(>1 = moves more, <1 = moves less)',
+              fontsize=12, fontweight='bold')
+ax2.legend(fontsize=11)
+ax2.grid(True, alpha=0.3)
+ax2.set_ylim(0.5, 1.5)
+
+plt.suptitle('Asymmetric Semantic Transformation in Llama-3.2-1B\n'
+             'Personal vs Official COVID-19 Discourse',
+             fontsize=14, fontweight='bold', y=1.02)
+plt.tight_layout()
+plt.savefig('movement_comparison.png', dpi=300, bbox_inches='tight')
+plt.show()
+print("Saved as movement_comparison.png")
