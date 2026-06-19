@@ -81,3 +81,210 @@ plt.tight_layout()
 plt.savefig('tsne_keywords_aligned.png', dpi=300, bbox_inches='tight')
 plt.show()
 print("Saved as tsne_keywords_aligned.png")
+
+# Step 3: Quantifying Semantic Drift via Aligned Cosine Distance
+
+from scipy.linalg import orthogonal_procrustes
+import numpy as np
+
+target_words = [
+    "vaccines", "symptoms", "safety", "nurses", "pandemic",
+    "community", "hospitals", "individual", "anxiety", "friends",
+    "death", "fear", "family", "home", "isolation", "hope"
+]
+
+valid_words = [w for w in target_words 
+               if w in model_p.wv and w in model_o.wv]
+
+print(f"Valid target words ({len(valid_words)}): {valid_words}")
+
+common_words = list(set(model_p.wv.key_to_index.keys()) & 
+                    set(model_o.wv.key_to_index.keys()))
+
+print(f"Common vocabulary: {len(common_words):,} words")
+
+P = np.array([model_p.wv[w] for w in common_words])
+O = np.array([model_o.wv[w] for w in common_words])
+
+R, _ = orthogonal_procrustes(P, O)
+
+from numpy.linalg import norm
+
+def cosine_distance_aligned(v1, v2):
+    return 1 - np.dot(v1, v2) / (norm(v1) * norm(v2))
+
+print("\nAligned cosine distances:")
+print("-" * 40)
+distances_aligned = []
+for w in valid_words:
+    v_p = model_p.wv[w] @ R
+    v_o = model_o.wv[w]
+    dist = cosine_distance_aligned(v_p, v_o)
+    distances_aligned.append((w, dist))
+
+distances_aligned.sort(key=lambda x: x[1], reverse=True)
+for w, d in distances_aligned:
+    print(f"{w:15s}: {d:.4f}")
+
+# Step 4: Semantic Neighbour Analysis
+
+target_words = [
+    "vaccines", "symptoms", "safety", "nurses", "pandemic",
+    "community", "hospitals", "individual", "anxiety", "friends",
+    "death", "fear", "family", "home", "isolation", "hope"
+]
+
+# Filter words present in both models
+valid_words = [w for w in target_words
+               if w in model_p.wv and w in model_o.wv]
+
+print(f"Valid target words ({len(valid_words)}): {valid_words}")
+print()
+
+for word in valid_words:
+    print(f"\n{'='*50}")
+    print(f"Word: {word}")
+    print(f"\nPersonal corpus (JOTPY):")
+    for w, s in model_p.wv.most_similar(word, topn=5):
+        print(f"  {w:20s} {s:.3f}")
+    print(f"\nOfficial corpus (WHO):")
+    for w, s in model_o.wv.most_similar(word, topn=5):
+        print(f"  {w:20s} {s:.3f}")
+
+target_words_all = ["death", "fear", "hope", "safety",
+                    "isolation", "family", "home", "community",
+                    "vaccines", "symptoms", "nurses", "friends",
+                    "hospitals", "individual", "pandemic", "anxiety"]
+
+html = """
+<style>
+table { border-collapse: collapse; width: 100%; font-family: Arial; font-size: 13px; }
+th { background-color: #2C3E50; color: white; padding: 10px; text-align: left; }
+td { padding: 8px 12px; border-bottom: 1px solid #ddd; vertical-align: top; }
+.word-col { font-weight: bold; background-color: #EBF5FB; width: 8%; }
+.personal-col { background-color: #D6EAF8; color: #1A5276; width: 46%; }
+.official-col { background-color: #FDEDEC; color: #922B21; width: 46%; }
+.shared { background-color: #F9E79F; color: #7D6608;
+          font-weight: bold; border-radius: 3px; padding: 1px 4px; }
+</style>
+<table>
+<tr>
+  <th>Word</th>
+  <th>Personal (JOTPY) — Top 5 Neighbours</th>
+  <th>Official (WHO) — Top 5 Neighbours</th>
+</tr>
+"""
+
+for word in target_words_all:
+    p_neighbors = [w for w, s in model_p.wv.most_similar(word, topn=5)]
+    o_neighbors = [w for w, s in model_o.wv.most_similar(word, topn=5)]
+    shared = set(p_neighbors) & set(o_neighbors)
+
+    def format_words(words, shared):
+        result = []
+        for w in words:
+            if w in shared:
+                result.append(f'<span class="shared">{w}</span>')
+            else:
+                result.append(w)
+        return ',  '.join(result)
+
+    p_formatted = format_words(p_neighbors, shared)
+    o_formatted = format_words(o_neighbors, shared)
+
+    html += f"""
+<tr>
+  <td class="word-col">{word}</td>
+  <td class="personal-col">{p_formatted}</td>
+  <td class="official-col">{o_formatted}</td>
+</tr>"""
+
+html += "</table>"
+
+# Save as HTML file
+with open('neighbours_table.html', 'w', encoding='utf-8') as f:
+    f.write(html)
+
+print("Saved as neighbours_table.html")
+
+# Display in Colab
+from IPython.display import HTML
+display(HTML(html))
+
+# Step 5: Categorical Aggregation and Visualization of Semantic Drift
+
+import matplotlib.pyplot as plt
+import numpy as np
+
+emotional_words = ["fear", "hope", "isolation", "safety", "death", "anxiety"]
+social_words = ["family", "community", "home", "friends"]
+medical_words = ["vaccines", "symptoms", "nurses", "hospitals", "individual", "pandemic"]
+
+distances_dict_aligned = {w: d for w, d in distances_aligned}
+
+def category_avg(words, distances_dict):
+    scores = [distances_dict[w] for w in words if w in distances_dict]
+    return sum(scores) / len(scores)
+
+emotional_avg = category_avg(emotional_words, distances_dict_aligned)
+social_avg = category_avg(social_words, distances_dict_aligned)
+medical_avg = category_avg(medical_words, distances_dict_aligned)
+
+print(f"Aligned average drift by category:")
+print(f"\nEmotional/experiential words: {emotional_avg:.4f}")
+for w in emotional_words:
+    if w in distances_dict_aligned:
+        print(f"  {w:15s}: {distances_dict_aligned[w]:.4f}")
+
+print(f"\nSocial relational words:      {social_avg:.4f}")
+for w in social_words:
+    if w in distances_dict_aligned:
+        print(f"  {w:15s}: {distances_dict_aligned[w]:.4f}")
+
+print(f"\nMedical/technical words:      {medical_avg:.4f}")
+for w in medical_words:
+    if w in distances_dict_aligned:
+        print(f"  {w:15s}: {distances_dict_aligned[w]:.4f}")
+
+distances_sorted = sorted(distances_aligned, key=lambda x: x[1], reverse=True)
+words = [w for w, d in distances_sorted]
+vals = [d for w, d in distances_sorted]
+
+colors = []
+for w in words:
+    if w in emotional_words:
+        colors.append('#E74C3C')
+    elif w in social_words:
+        colors.append('#3498DB')
+    elif w in medical_words:
+        colors.append('#2ECC71')
+    else:
+        colors.append('#95A5A6')
+
+fig, ax = plt.subplots(figsize=(12, 6))
+
+bars = ax.barh(words, vals, color=colors, alpha=0.85)
+
+for bar, val in zip(bars, vals):
+    ax.text(val + 0.005, bar.get_y() + bar.get_height()/2,
+            f'{val:.3f}', va='center', fontsize=9)
+
+from matplotlib.patches import Patch
+legend_elements = [
+    Patch(facecolor='#E74C3C', label='Emotional/experiential'),
+    Patch(facecolor='#3498DB', label='Social relational'),
+    Patch(facecolor='#2ECC71', label='Medical/technical'),
+]
+ax.legend(handles=legend_elements, loc='lower right', fontsize=10)
+
+ax.set_xlabel('Cosine Distance (aligned)', fontsize=11)
+ax.set_title('Semantic Drift: Personal vs Official COVID-19 Discourse\n'
+             '(cosine distance after Procrustes alignment)', fontsize=12)
+ax.set_xlim(0, 1.0)
+ax.axvline(x=0.5, color='gray', linestyle='--', alpha=0.5, linewidth=1)
+ax.grid(axis='x', alpha=0.3)
+
+plt.tight_layout()
+plt.savefig('drift_distances_aligned.png', dpi=300, bbox_inches='tight')
+plt.show()
+print("Saved as drift_distances_aligned.png")
