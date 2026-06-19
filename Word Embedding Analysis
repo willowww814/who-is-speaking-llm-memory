@@ -1,0 +1,83 @@
+# Step 1: Word2Vec Training with fixed random seed
+
+from gensim.models import Word2Vec
+
+PARAMS = {
+    'vector_size': 100,
+    'window': 5,
+    'min_count': 3,
+    'epochs': 10,
+    'seed': 42,
+    'workers': 1  # Required for reproducibility with fixed seed
+}
+
+print("Training personal model...")
+model_p = Word2Vec(personal_sentences, **PARAMS)
+
+print("Training official model...")
+model_o = Word2Vec(official_sentences, **PARAMS)
+
+print(f"\nPersonal model vocabulary: {len(model_p.wv):,} words")
+print(f"Official model vocabulary: {len(model_o.wv):,} words")
+
+# Step 2: t-SNE projection of Procrustes-aligned personal vs. official embeddings 
+import numpy as np
+from sklearn.manifold import TSNE
+import matplotlib.pyplot as plt
+from scipy.linalg import orthogonal_procrustes
+
+focus_words_tsne = ["vaccines", "symptoms", "safety", "nurses", "pandemic",
+    "community", "hospitals", "individual", "anxiety", "friends",
+    "death", "fear", "family", "home", "isolation", "hope"]
+
+common_words = list(set(model_p.wv.key_to_index.keys()) & 
+                    set(model_o.wv.key_to_index.keys()))
+P = np.array([model_p.wv[w] for w in common_words])
+O = np.array([model_o.wv[w] for w in common_words])
+R, _ = orthogonal_procrustes(P, O)
+
+# Project aligned personal vectors and official vectors into shared space
+p_vecs_aligned = np.array([model_p.wv[w] @ R for w in focus_words_tsne])
+o_vecs = np.array([model_o.wv[w] for w in focus_words_tsne])
+
+all_vecs_aligned = np.vstack([p_vecs_aligned, o_vecs])
+tsne = TSNE(n_components=2, random_state=42, perplexity=5, n_iter=2000)
+coords = tsne.fit_transform(all_vecs_aligned)
+
+n = len(focus_words_tsne)
+p_coords = coords[:n]
+o_coords = coords[n:]
+
+fig, ax = plt.subplots(figsize=(16, 12))
+
+ax.scatter(p_coords[:, 0], p_coords[:, 1],
+           c='steelblue', s=400, zorder=5,
+           label='Personal (JOTPY)')
+ax.scatter(o_coords[:, 0], o_coords[:, 1],
+           c='tomato', s=400, zorder=5,
+           label='Official (WHO)')
+
+for i, w in enumerate(focus_words_tsne):
+    ax.annotate(w, p_coords[i], fontsize=16,
+                color='steelblue', fontweight='bold',
+                xytext=(10, 8), textcoords='offset points')
+    ax.annotate(w, o_coords[i], fontsize=16,
+                color='tomato', fontweight='bold',
+                xytext=(10, 8), textcoords='offset points')
+
+for i, word in enumerate(focus_words_tsne):
+    ax.plot([p_coords[i, 0], o_coords[i, 0]],
+            [p_coords[i, 1], o_coords[i, 1]],
+            color='gray', alpha=0.5, linewidth=1.5,
+            linestyle='--')
+
+ax.legend(fontsize=14, loc='upper left', markerscale=1.5)
+ax.set_title("Semantic Positions of Target Words\n"
+             "Personal vs Official COVID-19 Discourse (Procrustes aligned)",
+             fontsize=16, fontweight='bold', pad=20)
+ax.axis('off')
+
+plt.tight_layout()
+plt.savefig('tsne_keywords_aligned.png', dpi=300, bbox_inches='tight')
+plt.show()
+print("Saved as tsne_keywords_aligned.png")
