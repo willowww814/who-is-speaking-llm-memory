@@ -1,0 +1,89 @@
+# ============================================================
+# SETUP: Install all required packages
+# ============================================================
+!pip install gensim sentence-transformers -q
+# Step 1: Data Collection
+# personal_covid.txt: 407 oral history testimonies (2020-2021)
+# Source: COVID-19 Archive, Arizona State University
+# https://covid-19archive.org/s/oralhistory
+
+# official_covid.txt: 133 WHO press briefing transcripts (2020-2021)
+# Source: WHO Multimedia Library
+# https://www.who.int/multi-media
+
+# Load corpora
+with open('personal_covid.txt', 'r', encoding='utf-8') as f:
+    personal_raw = f.read()
+
+with open('official_covid.txt', 'r', encoding='utf-8') as f:
+    official_raw = f.read()
+
+print(f"Personal corpus loaded: {len(personal_raw):,} characters")
+print(f"Official corpus loaded: {len(official_raw):,} characters")
+# Step 2: Preprocessing
+import re
+
+def filter_by_title_date(content):
+    """
+    Retain only entries with 2020 or 2021 in the title.
+    """
+    entries = content.split('-' * 60)
+    filtered = []
+    for entry in entries:
+        if not entry.strip():
+            continue
+        title_match = re.search(r'===.+?===', entry)
+        if title_match:
+            title = title_match.group()
+            if '2020' in title or '2021' in title:
+                filtered.append(entry)
+        else:
+            if '2020' in entry[:200] or '2021' in entry[:200]:
+                filtered.append(entry)
+    return '\n\n' + ('-' * 60 + '\n\n').join(filtered)
+
+
+def preprocess(text):
+    """
+    Preprocessing pipeline:
+    - Lowercase
+    - Remove non-alphabetic characters
+    - Tokenize into sentences
+    - Filter sentences with fewer than 10 tokens
+    """
+    text = text.lower()
+    text = re.sub(r'[^a-z\s]', '', text)
+    sentences = [
+        line.split()
+        for line in text.split('\n')
+        if len(line.split()) > 10
+    ]
+    return sentences
+
+
+# Apply date filter
+personal_filtered = filter_by_title_date(personal_raw)
+official_filtered = filter_by_title_date(official_raw)
+
+print(f"Personal entries (2020-2021): {personal_filtered.count('===') // 2}")
+print(f"Official entries (2020-2021): {official_filtered.count('===') // 2}")
+
+# Apply preprocessing
+personal_sentences = preprocess(personal_filtered)
+official_sentences = preprocess(official_filtered)
+
+print(f"\nPersonal corpus: {len(personal_sentences):,} sentences")
+print(f"Official corpus: {len(official_sentences):,} sentences")
+
+# Word count
+personal_words = sum(len(s) for s in personal_sentences)
+official_words = sum(len(s) for s in official_sentences)
+
+print(f"\nPersonal corpus: {personal_words:,} words")
+print(f"Official corpus: {official_words:,} words")
+
+# Average sentence length
+print(f"\nPersonal avg sentence length: "
+      f"{personal_words/len(personal_sentences):.1f} words")
+print(f"Official avg sentence length: "
+      f"{official_words/len(official_sentences):.1f} words")
